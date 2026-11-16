@@ -3,6 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { ApiError, handleApiError, verifyTokenFromRequest } from "@/lib/auth";
 import { getAccountContext } from "@/lib/account";
 import { codesToCsv } from "@/lib/code-utils";
+import { requestBaseUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
       last = chunk.docs[chunk.docs.length - 1];
     }
 
-    return new NextResponse(codesToCsv(rows), {
+    return new NextResponse(codesToCsv(rows, requestBaseUrl(req)), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="codes-${batchId}.csv"`,

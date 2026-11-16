@@ -5,6 +5,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { ApiError, handleApiError, verifyTokenFromRequest } from "@/lib/auth";
 import { getAccountContext } from "@/lib/account";
 import { codesToCsv, verifyUrl } from "@/lib/code-utils";
+import { requestBaseUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,6 +55,8 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getBatchCodes(batchId);
+    // The printed URL must be the public one, resolved from this request.
+    const base = requestBaseUrl(req);
 
     // Build the archive in memory instead of piping a stream — this behaves
     // identically locally and in serverless functions.
@@ -69,9 +72,9 @@ export async function GET(req: NextRequest) {
       archive.on("error", (err) => reject(err));
     });
 
-    archive.append(codesToCsv(rows), { name: `codes-${batchId}.csv` });
+    archive.append(codesToCsv(rows, base), { name: `codes-${batchId}.csv` });
     for (const row of rows) {
-      const png = await QRCode.toBuffer(verifyUrl(row.code), {
+      const png = await QRCode.toBuffer(verifyUrl(row.code, base), {
         width: 512,
         margin: 2,
         errorCorrectionLevel: "M",

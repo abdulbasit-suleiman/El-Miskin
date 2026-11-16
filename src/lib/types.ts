@@ -63,7 +63,8 @@ export interface CodeDoc {
   scanCount: number;
   firstScannedAt?: number;
   createdAt: number;
-  url: string;
+  /** Legacy field. Verify links are built from the current origin instead. */
+  url?: string;
 }
 
 export interface ScanLogDoc {

@@ -1,7 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "./firebase-admin";
 import { generateCode } from "./code-gen";
-import { verifyUrl } from "./code-utils";
 import { batchDisplayName } from "./batch-name";
 import type { BatchDoc, CodeDoc } from "./types";
 
@@ -62,7 +61,6 @@ export async function createBatchWithCodes(
           status: "valid",
           scanCount: 0,
           createdAt: now,
-          url: verifyUrl(code),
         } satisfies CodeDoc);
       }
 

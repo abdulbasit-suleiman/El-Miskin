@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { CODE_PATTERN, normalizeCode, verifyUrl } from "@/lib/code-utils";
+import { requestBaseUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Invalid code format", { status: 400 });
   }
 
-  const png = await QRCode.toBuffer(verifyUrl(code), {
+  const png = await QRCode.toBuffer(verifyUrl(code, requestBaseUrl(req)), {
     width: size,
     margin: 2,
     errorCorrectionLevel: "M",

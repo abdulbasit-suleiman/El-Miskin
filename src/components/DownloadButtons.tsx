@@ -1,9 +1,53 @@
 "use client";
 
 import { useState } from "react";
-import { getAuthToken } from "@/lib/api-client";
+import { getAuthToken, NETWORK_ERROR } from "@/lib/api-client";
 
 type Kind = "csv" | "zip";
+
+const RETRY_DELAY_MS = 700;
+
+/** A message from the server, which must not be retried. */
+class ExportError extends Error {}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Reads one export. The first request after a deploy can land on a cold
+ * function or be dropped by the network, so it is retried once with a fresh
+ * token before an error is shown.
+ */
+async function fetchExport(batchId: string, kind: Kind): Promise<Response> {
+  const url = `/api/download/${kind}?batchId=${encodeURIComponent(batchId)}`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (res.ok) return res;
+
+      const retryable = res.status === 502 || res.status === 503 || res.status === 504;
+      if (retryable && attempt === 1) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new ExportError(data?.error ?? `Download failed (${res.status})`);
+    } catch (err) {
+      if (err instanceof ExportError) throw err;
+      if (attempt === 2) throw new ExportError(NETWORK_ERROR);
+      await sleep(RETRY_DELAY_MS);
+    }
+  }
+
+  throw new ExportError(NETWORK_ERROR);
+}
 
 /**
  * Downloads a batch export with a visible loading state. The file is fetched
@@ -18,14 +62,7 @@ export default function DownloadButtons({ batchId }: { batchId: string }) {
     setBusy(kind);
     setError(null);
     try {
-      const token = await getAuthToken();
-      const res = await fetch(`/api/download/${kind}?batchId=${encodeURIComponent(batchId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? `Download failed (${res.status})`);
-      }
+      const res = await fetchExport(batchId, kind);
       const blob = await res.blob();
       const match = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/);
       const filename = match?.[1] ?? `batch-${batchId}.${kind}`;

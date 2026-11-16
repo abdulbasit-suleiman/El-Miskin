@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiGet } from "@/lib/api-client";
-import { verifyUrl } from "@/lib/code-utils";
 
 interface CodeHit {
   code: string;
@@ -172,7 +171,7 @@ function SearchResults() {
                     </Link>
                   )}
                   <a
-                    href={verifyUrl(hit.code)}
+                    href={`/verify/${encodeURIComponent(hit.code)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-emerald-700 underline"

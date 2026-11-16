@@ -1,6 +1,8 @@
 // Pure helpers shared by server AND client code.
 // Do NOT import anything Node-specific here (client bundle safe).
 
+import { clientBaseUrl } from "./app-url";
+
 /** Code format: PREFIX-16urlsafechars, e.g. ML-3kQxYv8mZpL2bN4a */
 export const CODE_PATTERN = /^[A-Z0-9]{2,12}-[A-Za-z0-9_-]{16}$/;
 
@@ -16,12 +18,16 @@ export function normalizeCode(raw: string): string {
   return `${trimmed.slice(0, idx).toUpperCase()}-${trimmed.slice(idx + 1)}`;
 }
 
+/**
+ * Absolute base URL for links and QR payloads. Route handlers should pass
+ * `requestBaseUrl(req)` instead, so a stale build time value cannot leak in.
+ */
 export function appUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  return clientBaseUrl();
 }
 
-export function verifyUrl(code: string): string {
-  return `${appUrl()}/verify/${code}`;
+export function verifyUrl(code: string, base: string = appUrl()): string {
+  return `${base.replace(/\/+$/, "")}/verify/${code}`;
 }
 
 /** ISO-8601 week key, e.g. "2026-W46". */
@@ -51,9 +57,12 @@ export function weekLabel(key: string): string {
   return parts.length === 2 ? `W${parts[1]}` : key;
 }
 
-export function codesToCsv(rows: { code: string; status: string }[]): string {
+export function codesToCsv(
+  rows: { code: string; status: string }[],
+  base: string = appUrl()
+): string {
   const header = ["code", "status", "url"];
-  const lines = [header, ...rows.map((r) => [r.code, r.status, verifyUrl(r.code)])];
+  const lines = [header, ...rows.map((r) => [r.code, r.status, verifyUrl(r.code, base)])];
   return lines
     .map((line) => line.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
     .join("\n");

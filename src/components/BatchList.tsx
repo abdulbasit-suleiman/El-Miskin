@@ -14,9 +14,9 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase-client";
-import { verifyUrl } from "@/lib/code-utils";
 import { batchDisplayName } from "@/lib/batch-name";
 import DownloadButtons from "./DownloadButtons";
+import QrImage from "./QrImage";
 import type { BatchDoc, CodeDoc } from "@/lib/types";
 
 interface Batch extends BatchDoc {
@@ -161,15 +161,7 @@ export default function BatchList({ productId }: { productId: string }) {
                           key={c.id}
                           className="flex items-center gap-3 rounded-lg border border-slate-200 p-3"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`/api/qr?code=${encodeURIComponent(c.id)}&size=128`}
-                            alt={`QR code for ${c.id}`}
-                            width={64}
-                            height={64}
-                            loading="lazy"
-                            className="shrink-0 rounded"
-                          />
+                          <QrImage code={c.id} />
                           <div className="min-w-0">
                             <code className="block truncate font-mono text-xs">{c.id}</code>
                             <span
@@ -187,7 +179,7 @@ export default function BatchList({ productId }: { productId: string }) {
                                 : ""}
                             </span>
                             <Link
-                              href={verifyUrl(c.id)}
+                              href={`/verify/${encodeURIComponent(c.id)}`}
                               target="_blank"
                               className="block text-xs text-emerald-700 underline"
                             >

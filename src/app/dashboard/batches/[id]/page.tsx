@@ -15,9 +15,9 @@ import {
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase-client";
 import { apiGet } from "@/lib/api-client";
-import { verifyUrl } from "@/lib/code-utils";
 import { purgeDeadlineLabel } from "@/lib/deletion";
 import DownloadButtons from "@/components/DownloadButtons";
+import QrImage from "@/components/QrImage";
 import type { CodeDoc } from "@/lib/types";
 
 interface BatchDetail {
@@ -189,15 +189,7 @@ export default function BatchDetailPage() {
                 key={code.id}
                 className="flex items-center gap-3 rounded-lg border border-slate-200 p-3"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`/api/qr?code=${encodeURIComponent(code.id)}&size=128`}
-                  alt={`QR code for ${code.id}`}
-                  width={64}
-                  height={64}
-                  loading="lazy"
-                  className="shrink-0 rounded"
-                />
+                <QrImage code={code.id} />
                 <div className="min-w-0">
                   <code className="block truncate font-mono text-xs">{code.id}</code>
                   <span
@@ -215,7 +207,7 @@ export default function BatchDetailPage() {
                       : ""}
                   </span>
                   <a
-                    href={verifyUrl(code.id)}
+                    href={`/verify/${encodeURIComponent(code.id)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="block text-xs text-emerald-700 underline"

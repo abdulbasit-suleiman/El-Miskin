@@ -23,7 +23,7 @@ Create `.env.local` for local development, and paste the same values into
 | `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | yes | same place |
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | yes | same place |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | yes | same place |
-| `NEXT_PUBLIC_APP_URL` | yes | `http://localhost:3000` locally; your production URL (`https://xxx.vercel.app`) on Vercel |
+| `NEXT_PUBLIC_APP_URL` | yes | the public site, e.g. `https://el-miskin.vercel.app` locally and on Vercel. QR codes and CSV exports encode `{value}/verify/{code}` |
 | `FIREBASE_ADMIN_PROJECT_ID` | no | Firebase console → Project settings → Service accounts → Generate new private key (JSON) |
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | no | same JSON (`client_email`) |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | no | same JSON (`private_key`) — keep the `\n` sequences on one line |
@@ -33,6 +33,12 @@ Create `.env.local` for local development, and paste the same values into
 redeploy. `NEXT_PUBLIC_APP_URL` determines what each QR code encodes
 (`{APP_URL}/verify/{code}`), so set it to the production URL **before**
 generating codes that will be printed.
+
+A `localhost` value for `NEXT_PUBLIC_APP_URL` is ignored on purpose: when the
+configured URL is local, QR images and exports fall back to the host of the
+incoming request, so a developer build can never print codes that point at
+`localhost`. Links inside the dashboard are relative (`/verify/{code}`), so they
+always stay on the host you are browsing.
 
 A template with every variable is in `.env.example`.
 
@@ -143,6 +149,12 @@ in the app.
   collection is downloaded just to filter it in the browser.
 - The purge job queries `products.purgeAt <= now`, a single-field range that
   Firestore indexes on its own. It runs in batches of 50 products per call.
+- QR and CSV URLs are resolved per request (`x-forwarded-host`, then `host`)
+  instead of being read from the build, so a printed code always points at the
+  site that produced it.
+- CSV and ZIP downloads retry once when the request is dropped or the platform
+  answers 502 to 504, which covers cold starts. A network failure now shows a
+  short message instead of the browser's raw "Failed to fetch".
 
 ---
 
