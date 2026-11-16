@@ -113,7 +113,10 @@ export default function DownloadButtons({ batchId }: { batchId: string }) {
       }
       setProgress({ done: rows.length, total });
 
-      if (!data.nextCursor || data.codes.length === 0) break;
+      if (data.codes.length === 0) break;
+      if (!data.nextCursor) break;
+      // Stop on the exact last code instead of asking for an empty page.
+      if (total > 0 && rows.length >= total) break;
       cursor = data.nextCursor;
     }
 
