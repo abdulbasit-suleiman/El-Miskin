@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { getAuthToken, NETWORK_ERROR } from "@/lib/api-client";
+import { codesToCsv } from "@/lib/code-utils";
+import { clientBaseUrl } from "@/lib/app-url";
+import { base64ToBytes, buildZip, textBytes } from "@/lib/zip-builder";
 
 type Kind = "csv" | "zip";
 
 const RETRY_DELAY_MS = 700;
+/** QR images per request. Keeps every call far below the serverless limit. */
+const CHUNK_LIMIT = 25;
 
 /** A message from the server, which must not be retried. */
 class ExportError extends Error {}
@@ -15,17 +20,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Reads one export. The first request after a deploy can land on a cold
- * function or be dropped by the network, so it is retried once with a fresh
- * token before an error is shown.
+ * Reads one export request. Cold functions and dropped connections are common
+ * enough on serverless hosting that a single retry with a fresh token is worth
+ * it before an error is shown.
  */
-async function fetchExport(batchId: string, kind: Kind): Promise<Response> {
-  const url = `/api/download/${kind}?batchId=${encodeURIComponent(batchId)}`;
-
+async function authorizedFetch(path: string): Promise<Response> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const token = await getAuthToken();
-      const res = await fetch(url, {
+      const res = await fetch(path, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
@@ -49,36 +52,93 @@ async function fetchExport(batchId: string, kind: Kind): Promise<Response> {
   throw new ExportError(NETWORK_ERROR);
 }
 
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function filenameFrom(res: Response, fallback: string): string {
+  const match = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/);
+  return match?.[1] ?? fallback;
+}
+
 /**
- * Downloads a batch export with a visible loading state. The file is fetched
- * with the fresh ID token in the Authorization header (no expiring links),
- * then saved as a blob. That is the same flow browsers use for large downloads.
+ * Downloads a batch export with a visible loading state.
+ *
+ * The QR archive is assembled in this browser from pages of images, because
+ * generating all of them in one serverless request takes longer than the
+ * function is allowed to live on large batches, and the download then dies
+ * with "Failed to fetch".
  */
 export default function DownloadButtons({ batchId }: { batchId: string }) {
   const [busy, setBusy] = useState<Kind | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function downloadCsv() {
+    const res = await authorizedFetch(
+      `/api/download/csv?batchId=${encodeURIComponent(batchId)}`
+    );
+    const blob = await res.blob();
+    saveBlob(blob, filenameFrom(res, `codes-${batchId}.csv`));
+  }
+
+  async function downloadZip() {
+    const files: { name: string; data: Uint8Array }[] = [];
+    const rows: { code: string; status: string }[] = [];
+    let cursor = "";
+    let total = 0;
+
+    for (let page = 0; page < 1000; page++) {
+      const params = new URLSearchParams({ batchId, limit: String(CHUNK_LIMIT) });
+      if (cursor) params.set("cursor", cursor);
+
+      const res = await authorizedFetch(`/api/download/qr-chunk?${params.toString()}`);
+      const data = (await res.json()) as {
+        codes: { code: string; status: string; png: string }[];
+        total: number;
+        nextCursor: string | null;
+      };
+
+      total = data.total ?? total;
+      for (const row of data.codes) {
+        files.push({ name: `QR-${row.code}.png`, data: base64ToBytes(row.png) });
+        rows.push({ code: row.code, status: row.status });
+      }
+      setProgress({ done: rows.length, total });
+
+      if (!data.nextCursor || data.codes.length === 0) break;
+      cursor = data.nextCursor;
+    }
+
+    // The CSV inside the archive uses the same public URL the browser is on.
+    files.push({
+      name: `codes-${batchId}.csv`,
+      data: textBytes(codesToCsv(rows, clientBaseUrl())),
+    });
+
+    const zip = buildZip(files);
+    saveBlob(new Blob([zip], { type: "application/zip" }), `QR-codes-${batchId}.zip`);
+  }
 
   async function download(kind: Kind) {
     setBusy(kind);
     setError(null);
+    setProgress(null);
     try {
-      const res = await fetchExport(batchId, kind);
-      const blob = await res.blob();
-      const match = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/);
-      const filename = match?.[1] ?? `batch-${batchId}.${kind}`;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      if (kind === "csv") await downloadCsv();
+      else await downloadZip();
     } catch (e) {
       setError((e as Error)?.message ?? "Download failed.");
     } finally {
       setBusy(null);
+      setProgress(null);
     }
   }
 
@@ -107,7 +167,9 @@ export default function DownloadButtons({ batchId }: { batchId: string }) {
       </div>
       {busy === "zip" && (
         <p className="mt-1 text-xs text-slate-500">
-          Generating QR images. This can take a few seconds for large batches.
+          {progress && progress.total > 0
+            ? `Generating QR images: ${progress.done} of ${progress.total}`
+            : "Preparing QR images. This can take a few seconds for large batches."}
         </p>
       )}
       {error && <p className="mt-1 text-xs text-red-700">{error}</p>}

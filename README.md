@@ -100,7 +100,9 @@ in the app.
 4. On the product page, generate a batch (1–1000 codes). The API writes the
    batch + codes with the Admin SDK, then **reads the count back** to verify the
    save; the UI reports `Saved N codes to the database`.
-5. Download **CSV** (code list) or **ZIP** (one PNG per code, 512px, plus CSV).
+5. Download **CSV** (code list with verify URLs) or **ZIP** (one 512px PNG per
+   code plus the CSV). The ZIP is assembled in the browser from pages of 25 QR
+   images, so a large batch never hits a serverless timeout.
 6. Scanning a code (first time → genuine; again → already used; unknown →
    invalid) updates live stats and the weekly chart.
 7. **Product settings** lets you rename the product or change the prefix;
@@ -141,7 +143,12 @@ in the app.
 - Dashboard lists fetch at most 100 products / 100 batches and sort client-side
   (no `orderBy` combos → no index setup).
 - Batch codes load 24 at a time with a "Load more" button.
-- QR thumbnails are lazy-loaded; ZIP export shows a "Building ZIP…" state.
+- QR thumbnails are lazy-loaded and retried once if a request fails.
+- The QR ZIP is built in the browser: `/api/download/qr-chunk` returns 25
+  pre-encoded PNGs per request, the page zips them with `fflate` and shows
+  progress ("Generating QR images: 50 of 300"). Encoding a whole large batch in
+  one request used to outlive the function limit and the browser reported
+  "Failed to fetch" or cancelled the download half way.
 - The verify page is server-rendered with zero client JavaScript.
 - Search runs on Firestore equality filters plus single-field range queries on
   the code document id and on `batches.nameLower`. Both are indexed
@@ -149,12 +156,12 @@ in the app.
   collection is downloaded just to filter it in the browser.
 - The purge job queries `products.purgeAt <= now`, a single-field range that
   Firestore indexes on its own. It runs in batches of 50 products per call.
-- QR and CSV URLs are resolved per request (`x-forwarded-host`, then `host`)
-  instead of being read from the build, so a printed code always points at the
-  site that produced it.
-- CSV and ZIP downloads retry once when the request is dropped or the platform
-  answers 502 to 504, which covers cold starts. A network failure now shows a
-  short message instead of the browser's raw "Failed to fetch".
+- QR and CSV URLs come from `NEXT_PUBLIC_APP_URL` when it is a real public URL,
+  otherwise from the incoming request (`x-forwarded-host`, then `host`), so a
+  printed code always points at the right site.
+- Every export request retries once when the connection drops or the platform
+  answers 502 to 504, which covers cold starts. A failure shows a short message
+  instead of the browser's raw "Failed to fetch".
 
 ---
 
@@ -185,10 +192,10 @@ Steps to reproduce from scratch:
    nobody opens the dashboard. Set `CRON_SECRET` first: Vercel sends it as
    `Authorization: Bearer <value>` and the route rejects anything else.
 
-Serverless notes: ZIP/CSV exports are generated **fully in memory** (no temp
-files), so they work on Vercel. The ZIP route sets `maxDuration = 60` for large
-batches (available on Pro; Hobby allows 10 s — a 20-code ZIP takes ~2 s
-in production).
+Serverless notes: CSV exports are generated **fully in memory** (no temp files).
+The QR ZIP is not built on the server at all: each `/api/download/qr-chunk`
+request is sized to finish in about a second on the Hobby plan, and the archive
+is created in the browser, so batch size no longer affects reliability.
 
 CLI deployment (what was used here):
 
@@ -218,8 +225,8 @@ vercel deploy --prod
 | `GET /api/search?q=…` | any member | codes, batches and products of the caller's account |
 | `GET /api/batches/[id]` | any member | batch details plus status counts |
 | `POST /api/generate-codes` | any member | create batch + verify save |
-| `GET /api/download/csv` | any member | batch CSV |
-| `GET /api/download/zip` | any member | batch ZIP of QR PNGs + CSV |
+| `GET /api/download/csv` | any member | batch CSV with verify URLs |
+| `GET /api/download/qr-chunk` | any member | page of 25 QR PNGs (base64) plus a cursor; the browser zips them |
 | `GET /api/qr?code=…` | public | single QR PNG (the URL inside it is public anyway) |
 | `GET /verify/[code]` | public | scan result page (rate limited: 10 / 10 s / IP) |
 

@@ -75,7 +75,6 @@ export async function POST(req: NextRequest) {
       saved,
       codes,
       csvUrl: `/api/download/csv?batchId=${batchId}`,
-      zipUrl: `/api/download/zip?batchId=${batchId}`,
     });
   } catch (e) {
     return handleApiError(e);

@@ -10,8 +10,8 @@
     "create-owner": "tsx scripts/create-owner.ts"
   },
   "dependencies": {
-    "archiver": "^7.0.1",
     "dotenv": "^16.4.5",
+    "fflate": "^0.8.3",
     "firebase": "^10.13.1",
     "firebase-admin": "^12.4.0",
     "next": "14.2.35",
@@ -21,7 +21,6 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "@types/archiver": "^6.0.2",
     "@types/node": "^20.14.15",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.4",
