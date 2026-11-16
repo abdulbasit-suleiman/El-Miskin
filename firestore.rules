@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Helpers -------------------------------------------------------
+    // The caller must be a signed-in member of an active manufacturer
+    // account. All reads are scoped to the account owner's uid, so the
+    // owner and their sub-admins share the same data.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function accountData() {
+      return get(/databases/$(database)/documents/manufacturers/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return signedIn() && accountData().active == true;
+    }
+
+    function ownerUid() {
+      return accountData().ownerId;
+    }
+
+    // ---- manufacturers -------------------------------------------------
+    // Public writes are impossible: accounts are provisioned by CLI / API.
+    // Members can read their own record; owners can read their sub-admins.
+    match /manufacturers/{id} {
+      allow read: if signedIn() && (
+        id == request.auth.uid ||
+        (isActive() && resource.data.ownerId == ownerUid())
+      );
+      allow write: if false;
+    }
+
+    // ---- products ------------------------------------------------------
+    // Dashboard reads only; all writes go through API routes (Admin SDK).
+    match /products/{id} {
+      allow read: if isActive() && resource.data.manufacturerId == ownerUid();
+      allow write: if false;
+    }
+
+    // ---- batches -------------------------------------------------------
+    match /batches/{id} {
+      allow read: if isActive() && get(
+        /databases/$(database)/documents/products/$(resource.data.productId)
+      ).data.manufacturerId == ownerUid();
+      allow write: if false;
+    }
+
+    // ---- codes ---------------------------------------------------------
+    // Account members can list codes (batch screens). The public verify
+    // page reads codes through the Admin SDK, so no public access is
+    // needed here.
+    match /codes/{code} {
+      allow read: if isActive();
+      allow write: if false;
+    }
+
+    // ---- scanLogs ------------------------------------------------------
+    // Written and read only by server-side code.
+    match /scanLogs/{id} {
+      allow read, write: if false;
+    }
+  }
+}
