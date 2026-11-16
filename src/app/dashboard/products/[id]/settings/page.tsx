@@ -7,6 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebase-client";
 import { apiPatch } from "@/lib/api-client";
 import DeleteProductZone from "@/components/DeleteProductZone";
+import { purgeDeadlineLabel } from "@/lib/deletion";
 import type { ProductDoc } from "@/lib/types";
 
 const PREFIX_PATTERN = /^[A-Z0-9]{2,12}$/;
@@ -158,11 +159,27 @@ export default function ProductSettingsPage() {
         </button>
       </form>
 
-      <DeleteProductZone
-        productId={productId}
-        productName={original.name}
-        totalCodes={original.stats?.totalCodes ?? 0}
-      />
+      {original.purgeAt ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <h2 className="font-semibold text-amber-900">Scheduled for deletion</h2>
+          <p className="mt-1 text-sm text-amber-900">
+            This product is removed permanently on {purgeDeadlineLabel(original.purgeAt)}. Restore
+            it before then to keep its codes and scan records.
+          </p>
+          <Link
+            href="/dashboard/products/pending"
+            className="mt-3 inline-block rounded-lg bg-amber-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-800"
+          >
+            Open pending deletion
+          </Link>
+        </div>
+      ) : (
+        <DeleteProductZone
+          productId={productId}
+          productName={original.name}
+          totalCodes={original.stats?.totalCodes ?? 0}
+        />
+      )}
     </div>
   );
 }

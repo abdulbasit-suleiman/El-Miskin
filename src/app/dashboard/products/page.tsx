@@ -36,6 +36,10 @@ export default function ProductsPage() {
     return unsub;
   }, [account]);
 
+  const all = products ?? [];
+  const active = all.filter((p) => !p.purgeAt);
+  const pendingCount = all.length - active.length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -43,12 +47,20 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold">Products</h1>
           <p className="text-sm text-slate-500">Create products and manage their QR codes.</p>
         </div>
-        <Link
-          href="/dashboard/products/new"
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
-        >
-          New product
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/dashboard/products/pending"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Pending deletion{pendingCount > 0 ? ` (${pendingCount})` : ""}
+          </Link>
+          <Link
+            href="/dashboard/products/new"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+          >
+            New product
+          </Link>
+        </div>
       </div>
 
       {accountError && (
@@ -60,17 +72,23 @@ export default function ProductsPage() {
         <h2 className="font-semibold">Your products</h2>
         {accountLoading || products === null ? (
           <p className="mt-3 text-sm text-slate-500">Loading products…</p>
-        ) : products.length === 0 ? (
+        ) : active.length === 0 ? (
           <div className="mt-3 text-sm text-slate-500">
-            No products yet.{" "}
-            <Link href="/dashboard/products/new" className="text-emerald-700 underline">
-              Create your first product
-            </Link>
-            .
+            {pendingCount > 0
+              ? "Every product is waiting to be deleted. Open Pending deletion to restore one."
+              : "No products yet."}{" "}
+            {pendingCount === 0 && (
+              <>
+                <Link href="/dashboard/products/new" className="text-emerald-700 underline">
+                  Create your first product
+                </Link>
+                .
+              </>
+            )}
           </div>
         ) : (
           <ul className="mt-4 divide-y divide-slate-100">
-            {products.map((p) => (
+            {active.map((p) => (
               <li key={p.id}>
                 <Link
                   href={`/dashboard/products/${p.id}`}
@@ -84,11 +102,11 @@ export default function ProductsPage() {
                       </span>
                     </p>
                     <p className="text-xs text-slate-500">
-                      {p.stats?.totalCodes ?? 0} codes · created{" "}
+                      {p.stats?.totalCodes ?? 0} codes, created{" "}
                       {new Date(p.createdAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <span className="text-sm text-emerald-600">Stats & codes →</span>
+                  <span className="text-sm text-emerald-600">Stats and codes</span>
                 </Link>
               </li>
             ))}

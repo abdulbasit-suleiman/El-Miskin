@@ -56,7 +56,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         createdAt: batch.createdAt ?? 0,
       },
       product: product
-        ? { id: productSnap.id, name: product.name, prefix: product.prefix }
+        ? {
+            id: productSnap.id,
+            name: product.name,
+            prefix: product.prefix,
+            pendingPurgeAt: product.purgeAt ?? null,
+          }
         : null,
       counts: {
         ...counts,

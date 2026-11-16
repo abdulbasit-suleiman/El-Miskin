@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiDelete } from "@/lib/api-client";
+import { PRODUCT_GRACE_HOURS, purgeDeadlineLabel } from "@/lib/deletion";
 
 interface Props {
   productId: string;
@@ -35,6 +36,7 @@ export default function DeleteProductZone({ productId, productName, totalCodes }
 
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scheduled, setScheduled] = useState<{ purgeAt: number; codes: number } | null>(null);
 
   useEffect(() => {
     setToken(randomToken());
@@ -50,17 +52,21 @@ export default function DeleteProductZone({ productId, productName, totalCodes }
   async function handleDelete() {
     if (!ready) return;
     const finalCheck = window.confirm(
-      `Last check. Permanently delete "${productName}" and all of its codes? This cannot be undone.`
+      `Last check. Delete "${productName}"? It stays recoverable for ${PRODUCT_GRACE_HOURS} hours and is then removed permanently.`
     );
     if (!finalCheck) return;
 
     setDeleting(true);
     setError(null);
     try {
-      await apiDelete(`/api/products/${productId}`, { confirmName: productName });
-      router.replace("/dashboard/products");
+      const result = await apiDelete(`/api/products/${productId}`, { confirmName: productName });
+      setScheduled({
+        purgeAt: result.purgeAt as number,
+        codes: result.codes as number,
+      });
     } catch (err) {
       setError((err as Error)?.message ?? "Could not delete this product.");
+    } finally {
       setDeleting(false);
     }
   }
@@ -71,15 +77,50 @@ export default function DeleteProductZone({ productId, productName, totalCodes }
     setPhraseEntry("");
     setTokenEntry("");
     setError(null);
+    setScheduled(null);
     setToken(randomToken());
+  }
+
+  if (scheduled) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <h2 className="font-semibold text-amber-900">Deletion scheduled</h2>
+        <p className="mt-2 text-sm text-amber-900">
+          {`"${productName}" and its ${scheduled.codes} codes will be permanently deleted on `}
+          <span className="font-semibold">{purgeDeadlineLabel(scheduled.purgeAt)}</span>
+          {`, which is ${PRODUCT_GRACE_HOURS} hours from now.`}
+        </p>
+        <p className="mt-2 text-sm text-amber-900">
+          Until then the product is hidden from your product list and from search, but nothing has
+          been erased yet. Open Pending deletion to restore it, or to delete it right away.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/products/pending")}
+            className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
+          >
+            Open pending deletion
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/products")}
+            className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
+          >
+            Back to products
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="rounded-xl border border-red-200 bg-white p-5 shadow-sm">
       <h2 className="font-semibold text-red-700">Delete this product</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Deleting removes the product, every code it ever generated and every one of its batches,
-        together with the scan records. This cannot be undone.
+        Deleting hides the product right away and keeps it recoverable for {PRODUCT_GRACE_HOURS}{" "}
+        hours. When that window ends the product, its batches, its codes and their scan records are
+        removed for good.
       </p>
 
       {!open ? (
@@ -93,8 +134,8 @@ export default function DeleteProductZone({ productId, productName, totalCodes }
       ) : (
         <div className="mt-4 space-y-5">
           <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-            {totalCodes} codes will be deleted with this product. You need to pass three checks
-            before the delete button turns on.
+            {totalCodes} codes belong to this product. You need to pass three checks before the
+            delete request can be sent.
           </p>
 
           <div>

@@ -16,6 +16,7 @@ import {
 import { getClientDb } from "@/lib/firebase-client";
 import { apiGet } from "@/lib/api-client";
 import { verifyUrl } from "@/lib/code-utils";
+import { purgeDeadlineLabel } from "@/lib/deletion";
 import DownloadButtons from "@/components/DownloadButtons";
 import type { CodeDoc } from "@/lib/types";
 
@@ -28,7 +29,7 @@ interface BatchDetail {
     quantity: number;
     createdAt: number;
   };
-  product: { id: string; name: string; prefix: string } | null;
+  product: { id: string; name: string; prefix: string; pendingPurgeAt: number | null } | null;
   counts: { valid: number; scanned: number; flagged: number; scans: number; total: number; truncated: boolean };
 }
 
@@ -132,6 +133,14 @@ export default function BatchDetailPage() {
           <span className="font-mono">{batch.id}</span>
         </p>
       </div>
+
+      {product?.pendingPurgeAt && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          The product behind this batch is scheduled for deletion on{" "}
+          {purgeDeadlineLabel(product.pendingPurgeAt)}. The batch and its codes are removed at the
+          same time unless you restore the product from Pending deletion.
+        </p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[

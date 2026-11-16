@@ -66,8 +66,15 @@ export async function GET(req: NextRequest) {
       .get();
 
     const owned = new Map<string, ProductDoc & { id: string }>();
+    const pending = new Set<string>();
     for (const d of productsSnap.docs) {
-      owned.set(d.id, { id: d.id, ...(d.data() as ProductDoc) });
+      const data = d.data() as ProductDoc;
+      if (data.purgeAt) {
+        // Scheduled for deletion, so it is already hidden from search.
+        pending.add(d.id);
+        continue;
+      }
+      owned.set(d.id, { id: d.id, ...data });
     }
 
     const codes: CodeHit[] = [];
@@ -86,6 +93,7 @@ export async function GET(req: NextRequest) {
 
     const addBatch = (id: string, data: BatchDoc) => {
       if (batches.has(id)) return;
+      if (pending.has(data.productId)) return;
       const product = owned.get(data.productId);
       if (!product && data.manufacturerId !== ctx.ownerId) return;
       batches.set(id, {

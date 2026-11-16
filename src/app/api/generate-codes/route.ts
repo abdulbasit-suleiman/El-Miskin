@@ -37,6 +37,12 @@ export async function POST(req: NextRequest) {
     if (product.manufacturerId !== ctx.ownerId) {
       throw new ApiError(403, "This product belongs to a different account.");
     }
+    if (product.purgeAt) {
+      throw new ApiError(
+        409,
+        "This product is scheduled for deletion. Restore it before generating more codes."
+      );
+    }
 
     const { batchId, codes } = await createBatchWithCodes(
       productId,

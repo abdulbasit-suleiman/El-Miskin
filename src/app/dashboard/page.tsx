@@ -36,7 +36,10 @@ export default function OverviewPage() {
     return unsub;
   }, [account]);
 
-  const totals = (products ?? []).reduce(
+  // Products scheduled for deletion drop out of the overview right away.
+  const activeProducts = (products ?? []).filter((p) => !p.purgeAt);
+
+  const totals = activeProducts.reduce(
     (acc, p) => ({
       totalCodes: acc.totalCodes + (p.stats?.totalCodes ?? 0),
       genuineScans: acc.genuineScans + (p.stats?.genuineScans ?? 0),
@@ -71,7 +74,7 @@ export default function OverviewPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Products", value: totals ? (products?.length ?? 0) : "…" },
+          { label: "Products", value: totals ? activeProducts.length : "…" },
           { label: "Codes generated", value: totals.totalCodes },
           { label: "Genuine scans", value: totals.genuineScans },
           { label: "Repeat scans", value: totals.repeatScans },
@@ -83,7 +86,7 @@ export default function OverviewPage() {
         ))}
       </div>
 
-      {!loading && products && products.length === 0 ? (
+      {!loading && products && activeProducts.length === 0 ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center shadow-sm">
           <h2 className="font-semibold text-emerald-900">Create your first product</h2>
           <p className="mx-auto mt-1 max-w-md text-sm text-emerald-800">
@@ -109,7 +112,7 @@ export default function OverviewPage() {
             <p className="mt-3 text-sm text-slate-500">Loading products…</p>
           ) : (
             <ul className="mt-4 divide-y divide-slate-100">
-              {products!.slice(0, 5).map((p) => (
+              {activeProducts.slice(0, 5).map((p) => (
                 <li key={p.id}>
                   <Link
                     href={`/dashboard/products/${p.id}`}

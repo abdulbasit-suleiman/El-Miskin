@@ -27,6 +27,7 @@ Create `.env.local` for local development, and paste the same values into
 | `FIREBASE_ADMIN_PROJECT_ID` | no | Firebase console → Project settings → Service accounts → Generate new private key (JSON) |
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | no | same JSON (`client_email`) |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | no | same JSON (`private_key`) — keep the `\n` sequences on one line |
+| `CRON_SECRET` | no | any long random string you invent. Vercel sends it as `Authorization: Bearer <value>` to the daily purge job |
 
 `NEXT_PUBLIC_*` values are baked in at **build time** — after changing them,
 redeploy. `NEXT_PUBLIC_APP_URL` determines what each QR code encodes
@@ -108,8 +109,24 @@ in the app.
    QR thumbnails, and the CSV / ZIP exports.
 10. **Product settings → Delete this product** asks for three typed checks (the
     product name, then `DELETE <name>`, then a random confirmation code) plus a
-    final browser confirmation. Only then does it delete the product with its
-    batches, codes and scan logs.
+    final browser confirmation. Confirming does **not** erase anything right
+    away: the product is marked with `deletionScheduledAt` and `purgeAt`
+    (`now + 48 hours`), so every code, batch and scan log stays intact for
+    48 hours.
+11. While a product waits, it is hidden from search and from the product lists,
+    and renaming it or generating more codes is blocked. Its detail page, batch
+    page and settings page show an amber **Scheduled for deletion** banner with
+    the exact purge time.
+12. **Products → Pending deletion (N)** lists everything waiting. Each row shows
+    the remaining hours plus two actions:
+    - **Restore** clears the schedule and the product is active again,
+    - **Delete now** skips the rest of the grace period after you retype the
+      product name, and erases the product tree immediately.
+13. When the 48 hours are over the product tree is removed permanently. Two
+    things trigger this: the daily cron job (`vercel.json` → 03:00 UTC,
+    `GET /api/cron/purge-products`) and any load of `/api/products/pending`,
+    which purges expired rows first so a product cannot linger by accident.
+    There is no undo after the purge.
 
 ---
 
@@ -124,13 +141,15 @@ in the app.
   the code document id and on `batches.nameLower`. Both are indexed
   automatically, so **no composite index has to be deployed**, and no
   collection is downloaded just to filter it in the browser.
+- The purge job queries `products.purgeAt <= now`, a single-field range that
+  Firestore indexes on its own. It runs in batches of 50 products per call.
 
 ---
 
 ## 7. Deploy to Vercel
 
 **Current status:** deployed at <https://el-miskin.vercel.app> (project
-`el-miskin` on team `erekerecancel-9972s-projects`). All 10 variables from §1
+`el-miskin` on team `erekerecancel-9972s-projects`). All 11 variables from §1
 are set for the **Production** environment, and the repo is connected to
 GitHub — pushing to the default branch redeploys automatically.
 
@@ -149,6 +168,10 @@ Steps to reproduce from scratch:
 7. Publish the Firestore rules (§2) **before** handing the app to users — the
    dashboard's live lists read Firestore directly from the browser.
 8. Log in on the deployed URL and generate a test batch.
+9. `vercel.json` registers a daily cron (`0 3 * * *`) that hits
+   `/api/cron/purge-products`, so expired grace periods are cleared even if
+   nobody opens the dashboard. Set `CRON_SECRET` first: Vercel sends it as
+   `Authorization: Bearer <value>` and the route rejects anything else.
 
 Serverless notes: ZIP/CSV exports are generated **fully in memory** (no temp
 files), so they work on Vercel. The ZIP route sets `maxDuration = 60` for large
@@ -175,7 +198,11 @@ vercel deploy --prod
 | `PATCH /api/account/sub-admins/[uid]` | owner | activate / deactivate |
 | `POST /api/products` | any member | create product |
 | `PATCH /api/products/[id]` | any member | rename / change prefix |
-| `DELETE /api/products/[id]` | any member | delete product tree (`confirmName` must match the product name) |
+| `DELETE /api/products/[id]` | any member | schedule deletion in 48 hours (`confirmName` must match the product name) |
+| `POST /api/products/[id]/restore` | any member | cancel a scheduled deletion |
+| `POST /api/products/[id]/purge` | any member | delete the product tree immediately (`confirmName` required) |
+| `GET /api/products/pending` | any member | products waiting for purge, expired ones removed first |
+| `GET/POST /api/cron/purge-products` | `CRON_SECRET` bearer or any member | purge everything past `purgeAt` |
 | `GET /api/search?q=…` | any member | codes, batches and products of the caller's account |
 | `GET /api/batches/[id]` | any member | batch details plus status counts |
 | `POST /api/generate-codes` | any member | create batch + verify save |

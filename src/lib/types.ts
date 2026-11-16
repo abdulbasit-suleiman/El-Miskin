@@ -32,6 +32,12 @@ export interface ProductDoc {
   createdAt: number;
   stats: ProductStats;
   weeklyScans: Record<string, number>; // key: "2026-W46" (ISO week), value: scan count
+  /** Set when the owner asks for deletion. The product then sits in a 48 hour grace period. */
+  deletionScheduledAt?: number;
+  /** Timestamp of the permanent delete. Cleared again if the owner restores the product. */
+  purgeAt?: number;
+  /** uid of the member who scheduled the deletion. */
+  deletedBy?: string;
 }
 
 export interface BatchDoc {

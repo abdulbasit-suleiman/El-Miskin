@@ -8,6 +8,7 @@ import { getClientDb } from "@/lib/firebase-client";
 import StatsChart from "@/components/StatsChart";
 import GenerateCodesForm from "@/components/GenerateCodesForm";
 import BatchList from "@/components/BatchList";
+import { purgeDeadlineLabel } from "@/lib/deletion";
 import type { ProductDoc } from "@/lib/types";
 
 export default function ProductDetailPage() {
@@ -92,6 +93,23 @@ export default function ProductDetailPage() {
           Stats update live as codes are scanned. Try it in another tab.
         </p>
       </div>
+
+      {product.purgeAt && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h2 className="font-semibold text-amber-900">Scheduled for deletion</h2>
+          <p className="mt-1 text-sm text-amber-900">
+            This product and its codes are removed permanently on{" "}
+            {purgeDeadlineLabel(product.purgeAt)}. Until then it stays out of your product list and
+            out of search, and nothing has been erased yet.
+          </p>
+          <Link
+            href="/dashboard/products/pending"
+            className="mt-3 inline-block rounded-lg bg-amber-700 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-amber-800"
+          >
+            Open pending deletion
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[

@@ -1,4 +1,5 @@
 import { adminDb } from "./firebase-admin";
+import type { ProductDoc } from "./types";
 
 const CHUNK = 450; // stays under the 500 writes per commit limit
 
@@ -38,4 +39,28 @@ export async function deleteProductTree(productId: string) {
   await db.doc(`products/${productId}`).delete();
 
   return { codes, batches, scanLogs };
+}
+
+/**
+ * Permanently removes every product whose 48 hour grace period has elapsed.
+ *
+ * The query is a single range on `purgeAt`, which Firestore indexes on its
+ * own, so no composite index is needed. Called by the daily cron job and
+ * whenever the pending deletion screen loads.
+ */
+export async function purgeExpiredProducts(max = 50) {
+  const db = adminDb();
+  const snap = await db
+    .collection("products")
+    .where("purgeAt", "<=", Date.now())
+    .limit(max)
+    .get();
+
+  const purged: Array<{ id: string; name: string; deleted: Awaited<ReturnType<typeof deleteProductTree>> }> = [];
+  for (const doc of snap.docs) {
+    const product = doc.data() as ProductDoc;
+    const deleted = await deleteProductTree(doc.id);
+    purged.push({ id: doc.id, name: product.name ?? "", deleted });
+  }
+  return purged;
 }

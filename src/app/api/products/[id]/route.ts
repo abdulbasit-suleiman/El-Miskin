@@ -3,7 +3,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { ApiError, handleApiError, verifyRequestToken } from "@/lib/auth";
 import { getAccountContext } from "@/lib/account";
 import { parseProductInput } from "@/lib/product-input";
-import { deleteProductTree } from "@/lib/product-delete";
+import { PRODUCT_GRACE_MS } from "@/lib/deletion";
 import type { ProductDoc } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const product = snap.data() as ProductDoc;
     if (product.manufacturerId !== ctx.ownerId) {
       throw new ApiError(403, "This product belongs to a different account.");
+    }
+    if (product.purgeAt) {
+      throw new ApiError(
+        409,
+        "This product is scheduled for deletion. Restore it before making changes."
+      );
     }
 
     const body = await req.json().catch(() => ({}));
@@ -58,9 +64,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 /**
  * DELETE /api/products/[id]
- * Permanently removes a product with its batches, codes and scan logs.
+ * Schedules the product for deletion instead of removing it at once. The
+ * product stays in a 48 hour grace period, during which the owner can
+ * restore it, and the scheduled purge then removes the product with its
+ * batches, codes and scan logs.
  * The caller must retype the exact product name, so a stray request cannot
- * delete a product by accident.
+ * schedule a deletion by accident.
  * Body: { confirmName: string }
  */
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
@@ -87,9 +96,31 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       throw new ApiError(400, "The product name you typed does not match this product.");
     }
 
-    const deleted = await deleteProductTree(params.id);
+    if (product.purgeAt) {
+      return NextResponse.json({
+        id: params.id,
+        name: product.name,
+        scheduled: true,
+        alreadyScheduled: true,
+        deletionScheduledAt: product.deletionScheduledAt ?? null,
+        purgeAt: product.purgeAt,
+        codes: product.stats?.totalCodes ?? 0,
+      });
+    }
 
-    return NextResponse.json({ id: params.id, name: product.name, deleted });
+    const now = Date.now();
+    const purgeAt = now + PRODUCT_GRACE_MS;
+    await ref.set({ deletionScheduledAt: now, purgeAt, deletedBy: ctx.uid }, { merge: true });
+
+    return NextResponse.json({
+      id: params.id,
+      name: product.name,
+      scheduled: true,
+      alreadyScheduled: false,
+      deletionScheduledAt: now,
+      purgeAt,
+      codes: product.stats?.totalCodes ?? 0,
+    });
   } catch (e) {
     return handleApiError(e);
   }
